@@ -1,0 +1,40 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "layerwise-app",
+  "compatibility_date": "2026-04-27",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "@tanstack/react-start/server-entry",
+  // The `database_id` here is only used for local development (a local SQLite
+  // file). In production the real per-project D1 database is bound as `DB`
+  // automatically when the app is published.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "layerwise-app-db",
+      "database_id": "local"
+    }
+  ],
+  // Layerwise Storage and Email. Local preview serves these bindings through
+  // the `@layerwise/vite` Storage and Email Workers (local email is never
+  // sent; it appears in the Layerwise app). Published apps are bound to the
+  // project's Storage and Email automatically.
+  "services": [
+    {
+      "binding": "STORAGE",
+      "service": "layerwise-storage",
+      "entrypoint": "ProjectStorage"
+    },
+    {
+      "binding": "EMAIL",
+      "service": "layerwise-project-email",
+      "entrypoint": "ProjectEmail"
+    }
+  ],
+  "vars": {
+    "BETTER_AUTH_URL": "",
+    "BETTER_AUTH_SECRET": ""
+  },
+  "secrets": {
+    "required": ["AUTH_EMAIL_URL"]
+  }
+}
