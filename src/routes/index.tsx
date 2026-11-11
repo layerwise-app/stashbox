@@ -129,6 +129,21 @@ function Home() {
             <Logo className='size-5' /> Stashbox
           </span>
           <span>Your files stay private until you share them.</span>
+          <a
+            href='https://layerwise.app'
+            target='_blank'
+            rel='noopener noreferrer'
+            className='flex-none'
+          >
+            <img
+              src='https://layerwise.app/powered-by.png'
+              alt='Powered by Layerwise'
+              width={174}
+              height={28}
+              loading='lazy'
+              className='block h-7 w-[174px]'
+            />
+          </a>
         </div>
       </footer>
     </div>

@@ -1,11 +1,55 @@
-# Layerwise project
+<a href="https://layerwise.app"><picture><source media="(prefers-color-scheme: dark)" srcset="https://layerwise.app/powered-by-dark.png"><img src="https://layerwise.app/powered-by.png" alt="Powered by Layerwise" width="174" height="28"></picture></a>
 
-<a href="https://layerwise.app"><img src="https://layerwise.app/powered-by.png" alt="Powered by Layerwise" width="320" /></a>
+# Stashbox
 
-This is the starter used for new Layerwise projects. It is a full-stack React
-app built with TanStack Start and deployed to Cloudflare Workers. The template
-includes Better Auth, a D1 database with Drizzle ORM, Tailwind CSS, shadcn/ui,
-and the Layerwise preview bridge.
+Stashbox is a Dropbox-style file storage app: people sign up, upload files and
+whole folders, organize them, preview them in the browser, and share them with
+a link. It's a template for anyone who wants their own private file locker,
+for a family, a club, or a small business that sends files to clients. See the
+live demo at https://stashbox.layerwise.site/.
+
+Stashbox was built with [Layerwise](https://layerwise.app), and you can open it
+in Layerwise to make your own version.
+
+It's a full-stack React app built with TanStack Start and deployed to
+Cloudflare Workers, with Better Auth, a D1 database with Drizzle ORM, Tailwind
+CSS, shadcn/ui, and Layerwise Storage.
+
+## Make it yours
+
+- **Name and search:** the site name and description are in
+  `src/lib/site.ts`. After connecting a custom domain, set `site.url` there.
+- **Logo and icons:** the logo is `src/components/logo.tsx`; the favicons and
+  app icons are in `public/`.
+- **Words:** the landing page is `src/routes/index.tsx`.
+- **Storage per person:** `PLAN_NAME` and `PLAN_LIMIT_BYTES` in
+  `src/lib/files.ts` (2 GB by default). Files in Trash count toward it.
+
+## What's inside
+
+- **File browser** (`src/components/files/`): a resizable sidebar with All
+  files, Recent, Starred, Shared links, and Trash, and a storage meter.
+  Breadcrumbs, list and grid views, sortable columns, nested folders in the
+  URL, multi-select with click, Cmd/Ctrl, Shift, and Cmd+A, a selection
+  toolbar, and a context menu.
+- **Uploads** (`uploads.tsx`): files and folders, by button or drag and drop,
+  sent straight to Storage with presigned URLs. A progress panel can cancel
+  each upload, and duplicate names become `name (1)`.
+- **Preview** (`preview.tsx`): images, PDFs, video, audio, text, Markdown,
+  and code, full screen, with arrow keys to move between files.
+- **Organize:** rename inline, move or copy with a folder picker, star, and
+  search by name with each result's location. Downloading a folder or several
+  items at once gives one ZIP, streamed by `src/routes/api/zip.ts`. Trash restores items to their
+  folder, recreating it if it was deleted too.
+- **Share links** (`share-dialog.tsx`, `src/routes/s.$token.tsx`): each file
+  or folder gets a link with an optional expiry date, password, and download
+  switch. The Shared links page shows view counts. Access is checked on the server, and files are
+  served through short-lived signed URLs.
+- **Settings** (`src/routes/dashboard/settings.tsx`): profile photo, name,
+  appearance, password, sign out of other devices, and account deletion,
+  which removes every file and share link.
+- **Data:** names and folders live in D1 (`src/db/schema.ts`); file bytes live
+  in Storage under generated keys, so renames and moves never copy data.
 
 ## Commands
 
