@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useMutation } from '@tanstack/react-query';
 import { authClient } from '~/lib/auth-client';
+import { Logo } from '~/components/logo';
 import { Button } from '~/components/ui/button';
 import {
   Card,
@@ -40,7 +41,11 @@ function SignUpPage() {
   });
 
   return (
-    <div className='flex min-h-svh items-center justify-center p-4'>
+    <div className='flex min-h-svh flex-col items-center justify-center gap-8 bg-muted p-4'>
+      <Link to='/' className='flex items-center gap-2 text-lg font-semibold tracking-tight'>
+        <Logo className='size-8' />
+        Stashbox
+      </Link>
       <Card className='w-full max-w-sm'>
         <CardHeader>
           <CardTitle>Create an account</CardTitle>

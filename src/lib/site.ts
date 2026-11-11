@@ -23,8 +23,9 @@ type Site = {
 
 /** What search engines and link previews read about this site. */
 export const site: Site = {
-  name: 'My App',
-  description: 'Built with Layerwise',
+  name: 'Stashbox',
+  description:
+    'Stashbox keeps your files safe in the cloud. Upload files and folders, preview them in the browser, and share them with a link.',
   url: '',
   image: '',
   imageAlt: '',
