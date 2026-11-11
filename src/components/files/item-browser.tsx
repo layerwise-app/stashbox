@@ -590,9 +590,7 @@ export function ItemBrowser({
                                 {item.name}
                               </button>
                               <StarToggle item={item} coarse={coarse} />
-                              {item.shared && (
-                                <LinkIcon className={cn('size-3.5 shrink-0 text-muted-foreground', SHOW.accessInline[layout])} aria-label='Shared' />
-                              )}
+                              <SharedBadge item={item} className={SHOW.accessInline[layout]} />
                             </div>
                           )}
                           <p className={cn('truncate text-xs text-muted-foreground', SHOW.narrow)}>
@@ -619,16 +617,8 @@ export function ItemBrowser({
                           </button>
                         </div>
                       )}
-                      <div role='gridcell' className={cn('items-center gap-1.5 text-muted-foreground', SHOW.access[layout])}>
-                        {item.shared ? (
-                          <>
-                            <LinkIcon className='size-3.5' /> Anyone with link
-                          </>
-                        ) : (
-                          <>
-                            <LockIcon className='size-3.5' /> Only you
-                          </>
-                        )}
+                      <div role='gridcell' className={cn('min-w-0 items-center gap-1.5 text-muted-foreground', SHOW.access[layout])}>
+                        <AccessCell item={item} />
                       </div>
                       <div role='gridcell' className={cn('text-muted-foreground', SHOW.wide)}>
                         {formatDate(item.updatedAt)}
@@ -719,16 +709,20 @@ export function ItemBrowser({
                           {renamingId === item.id ? (
                             <RenameInput item={item} onDone={(name) => commitRename(item, name)} />
                           ) : (
-                            <p className='flex items-center gap-1 text-sm font-medium' title={item.name}>
-                              <span className='truncate'>{item.name}</span>
-                              {item.starred && <StarIcon className='size-3.5 shrink-0 fill-amber-400 text-amber-400' aria-label='Starred' />}
-                              {item.shared && <LinkIcon className='size-3.5 shrink-0 text-muted-foreground' aria-label='Shared' />}
+                            // Long names wrap to a second line before they're cut off.
+                            <p className='line-clamp-2 text-sm leading-snug font-medium [overflow-wrap:anywhere]' title={item.name}>
+                              {item.name}
                             </p>
                           )}
-                          <p className='truncate text-xs text-muted-foreground'>
-                            {item.type === 'file' ? formatBytes(item.size) : 'Folder'}
-                            {showLocation && item.location ? ` · ${item.location.path}` : ''}
-                          </p>
+                          {/* Badges sit on the details line so the name gets the full width. */}
+                          <div className='mt-0.5 flex min-w-0 items-center gap-1 text-xs text-muted-foreground'>
+                            {item.starred && <StarIcon className='size-3.5 shrink-0 fill-amber-400 text-amber-400' aria-label='Starred' />}
+                            <SharedBadge item={item} />
+                            <span className='truncate'>
+                              {item.type === 'file' ? formatBytes(item.size) : 'Folder'}
+                              {showLocation && item.location ? ` · ${item.location.path}` : ''}
+                            </span>
+                          </div>
                         </div>
                         <RowMenu entries={menuFor([item])} name={item.name} />
                       </div>
@@ -757,6 +751,42 @@ export function ItemBrowser({
         )}
       </ContextMenu>
     </div>
+  );
+}
+
+/** Who can open the item: its own link, a shared folder above it, or only the owner. */
+function AccessCell({ item }: { item: Item }) {
+  if (item.shared)
+    return (
+      <>
+        <LinkIcon className='size-3.5 shrink-0' /> Anyone with link
+      </>
+    );
+  if (item.sharedVia)
+    return (
+      <div className='min-w-0' title={`Anyone with the link to “${item.sharedVia.name}” can open this`}>
+        <p className='flex items-center gap-1.5'>
+          <LinkIcon className='size-3.5 shrink-0' /> Anyone with link
+        </p>
+        <p className='truncate pl-5 text-xs'>From folder “{item.sharedVia.name}”</p>
+      </div>
+    );
+  return (
+    <>
+      <LockIcon className='size-3.5 shrink-0' /> Only you
+    </>
+  );
+}
+
+function SharedBadge({ item, className }: { item: Item; className?: string }) {
+  if (!item.shared && !item.sharedVia) return null;
+  const label = item.shared
+    ? 'Anyone with link'
+    : `Anyone with link, from folder “${item.sharedVia!.name}”`;
+  return (
+    <span title={label} className={cn('inline-flex shrink-0 text-muted-foreground', className)}>
+      <LinkIcon className='size-3.5' aria-label={label} />
+    </span>
   );
 }
 

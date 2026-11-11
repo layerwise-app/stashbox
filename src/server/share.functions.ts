@@ -1,13 +1,19 @@
 import { createServerFn } from '@tanstack/react-start';
 import { env } from 'cloudflare:workers';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '~/db';
 import { items, shares, user } from '~/db/schema';
 import { authMiddleware } from '~/server/middleware';
-import { ancestorsOf, getLiveItem, itemColumns, readText } from '~/server/items';
-import type { Crumb } from '~/lib/files';
+import { ancestorsOf, chunk, getLiveItem, itemColumns, readText } from '~/server/items';
+import { fileKind, type Crumb } from '~/lib/files';
 
 const SIGNED_URL_SECONDS = 15 * 60;
+
+/**
+ * Kinds the share page plays or shows from a file link. Text is read through
+ * getSharedFileText instead, so it never needs one.
+ */
+const PREVIEWABLE = new Set(['image', 'video', 'audio', 'pdf']);
 
 // ---- Passwords and access grants -----------------------------------------
 
@@ -323,12 +329,75 @@ export const getSharedFileUrl = createServerFn({ method: 'POST' })
   )
   .handler(async ({ data }) => {
     const { share, file } = await sharedFile(data.token, data.grant, data.fileId);
-    if (data.download && !share.allowDownload)
-      throw new Error('The owner turned off downloads for this link.');
+    if (!share.allowDownload) {
+      if (data.download) throw new Error('The owner turned off downloads for this link.');
+      // View links are only for files the page can show in place; anything
+      // else would just be a download under another name.
+      if (!PREVIEWABLE.has(fileKind(file.name, file.mimeType)))
+        throw new Error('The owner turned off downloads for this link.');
+    }
     return env.STORAGE.signedUrl(file.storageKey, {
       expiresIn: SIGNED_URL_SECONDS,
       download: data.download ? file.name : undefined
     });
+  });
+
+/**
+ * Short-lived thumbnail links for images and videos in one folder of a shared
+ * folder link. Files outside that folder, or of other kinds, are left out.
+ */
+export const getSharedThumbUrls = createServerFn({ method: 'POST' })
+  .validator(
+    (input: { token: string; grant?: string | null; folderId?: string | null; ids: string[] }) => {
+      if (!Array.isArray(input?.ids)) throw new Error('Choose some files.');
+      return {
+        token: String(input?.token ?? ''),
+        grant: input?.grant ?? null,
+        folderId: input?.folderId || null,
+        ids: input.ids.map(String).slice(0, 200)
+      };
+    }
+  )
+  .handler(async ({ data }) => {
+    const result = await access(data.token, data.grant);
+    if (result.status !== 'ok') throw new Error('This link isn’t available.');
+    const { share, root } = result;
+    if (root.type !== 'folder' || !data.ids.length) return {};
+    const folderId = data.folderId ?? root.id;
+    if (folderId !== root.id && !(await crumbsWithin(share.userId, root.id, folderId)))
+      throw new Error('This folder isn’t available.');
+    const rows = [];
+    for (const part of chunk(data.ids, 90))
+      rows.push(
+        ...(await db
+          .select({
+            id: items.id,
+            name: items.name,
+            mimeType: items.mimeType,
+            storageKey: items.storageKey
+          })
+          .from(items)
+          .where(
+            and(
+              eq(items.userId, share.userId),
+              eq(items.parentId, folderId),
+              eq(items.type, 'file'),
+              isNull(items.trashedAt),
+              inArray(items.id, part)
+            )
+          ))
+      );
+    const urls: Record<string, string> = {};
+    await Promise.all(
+      rows.map(async (row) => {
+        const kind = fileKind(row.name, row.mimeType);
+        if (row.storageKey && (kind === 'image' || kind === 'video'))
+          urls[row.id] = await env.STORAGE.signedUrl(row.storageKey, {
+            expiresIn: SIGNED_URL_SECONDS
+          });
+      })
+    );
+    return urls;
   });
 
 export const getSharedFileText = createServerFn({ method: 'POST' })

@@ -20,6 +20,8 @@ export type Item = {
   location?: { id: string | null; path: string };
   /** Present when the item has an active share link. */
   shared?: boolean;
+  /** The nearest folder above the item with a share link, if any. */
+  sharedVia?: { id: string; name: string };
 };
 
 export type Crumb = { id: string | null; name: string };

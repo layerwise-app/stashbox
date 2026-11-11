@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { ChevronRightIcon, DownloadIcon, FolderOpenIcon, LinkIcon, LockIcon } from 'lucide-react';
+import {
+  ChevronRightIcon,
+  DownloadIcon,
+  EyeIcon,
+  FolderOpenIcon,
+  LayoutGridIcon,
+  LinkIcon,
+  ListIcon,
+  LockIcon,
+  PlayIcon
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '~/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card';
@@ -15,14 +25,16 @@ import {
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 import { Skeleton } from '~/components/ui/skeleton';
+import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group';
 import { Logo } from '~/components/logo';
 import { FileIcon } from '~/components/files/file-icon';
 import { FilePreview, type PreviewSource } from '~/components/files/preview';
-import { errorMessage, startDownload } from '~/components/files/queries';
-import { formatBytes, formatDate, type Item } from '~/lib/files';
+import { errorMessage, startDownload, usePersistentState } from '~/components/files/queries';
+import { fileKind, formatBytes, formatDate, type Item } from '~/lib/files';
 import {
   getSharedFileText,
   getSharedFileUrl,
+  getSharedThumbUrls,
   openShare,
   unlockShare
 } from '~/server/share.functions';
@@ -45,6 +57,7 @@ function SharedPage() {
   const [ready, setReady] = useState(false);
   const [grant, setGrant] = useState<string | null>(null);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const [view, setView] = usePersistentState<'list' | 'grid'>('stashbox:share-view', 'list');
 
   useEffect(() => {
     setGrant(sessionStorage.getItem(grantKey));
@@ -73,6 +86,27 @@ function SharedPage() {
     [data]
   );
   const files = useMemo(() => items.filter((i) => i.type === 'file'), [items]);
+
+  // Thumbnails, like the owner's browser: images in both views, video
+  // frames in grid view. The server checks each file against the link.
+  const mediaIds = useMemo(
+    () =>
+      files
+        .filter((f) => {
+          const kind = fileKind(f.name, f.mimeType);
+          return kind === 'image' || (view === 'grid' && kind === 'video');
+        })
+        .map((f) => f.id)
+        .slice(0, 200),
+    [files, view]
+  );
+  const thumbs = useQuery({
+    queryKey: ['share-thumbs', token, grant, folder ?? 'root', mediaIds.join(',')],
+    queryFn: () =>
+      getSharedThumbUrls({ data: { token, grant, folderId: folder ?? null, ids: mediaIds } }),
+    enabled: !!data && data.root.type === 'folder' && mediaIds.length > 0,
+    staleTime: 10 * 60 * 1000
+  });
 
   const source = useMemo<PreviewSource>(
     () => ({
@@ -122,6 +156,11 @@ function SharedPage() {
   const openFolder = (id: string) =>
     navigate({ to: '/s/$token', params: { token }, search: id === data.root.id ? {} : { folder: id } });
 
+  const openItem = (item: SharedItem) =>
+    item.type === 'folder'
+      ? openFolder(item.id)
+      : setPreviewIndex(files.findIndex((f) => f.id === item.id));
+
   return (
     <PageFrame owner={data.ownerName}>
       <div className='mx-auto w-full max-w-5xl px-4 py-6 sm:px-6'>
@@ -147,10 +186,38 @@ function SharedPage() {
               );
             })}
           </ol>
-          <p className='mt-1 px-1.5 text-sm text-muted-foreground'>
-            {items.length} {items.length === 1 ? 'item' : 'items'} · View only
-            {!data.allowDownload && ' · Downloads are turned off'}
-          </p>
+          <div className='mt-1 flex flex-wrap items-center gap-x-3 gap-y-2 px-1.5'>
+            <p className='flex min-w-0 flex-1 items-center gap-1.5 text-sm text-muted-foreground'>
+              {data.allowDownload ? (
+                <DownloadIcon className='size-3.5 shrink-0' />
+              ) : (
+                <EyeIcon className='size-3.5 shrink-0' />
+              )}
+              <span>
+                {items.length} {items.length === 1 ? 'item' : 'items'} ·{' '}
+                {data.allowDownload
+                  ? 'Anyone with the link can view and download'
+                  : 'View only. Downloads are turned off'}
+              </span>
+            </p>
+            {items.length > 0 && (
+              <ToggleGroup
+                type='single'
+                size='sm'
+                value={view}
+                onValueChange={(value) => value && setView(value as 'list' | 'grid')}
+                aria-label='View'
+                className='rounded-md border p-0.5'
+              >
+                <ToggleGroupItem value='list' aria-label='List view' className='h-7 rounded-[5px] px-2 data-[state=on]:bg-accent'>
+                  <ListIcon />
+                </ToggleGroupItem>
+                <ToggleGroupItem value='grid' aria-label='Grid view' className='h-7 rounded-[5px] px-2 data-[state=on]:bg-accent'>
+                  <LayoutGridIcon />
+                </ToggleGroupItem>
+              </ToggleGroup>
+            )}
+          </div>
         </nav>
 
         {items.length === 0 ? (
@@ -162,18 +229,28 @@ function SharedPage() {
               <EmptyTitle>This folder is empty</EmptyTitle>
             </EmptyHeader>
           </Empty>
-        ) : (
+        ) : view === 'list' ? (
           <ul className='divide-y rounded-xl border bg-card'>
             {items.map((item) => (
               <SharedRow
                 key={item.id}
                 item={item}
+                thumb={thumbs.data?.[item.id]}
                 canDownload={data.allowDownload}
-                onOpen={() =>
-                  item.type === 'folder'
-                    ? openFolder(item.id)
-                    : setPreviewIndex(files.findIndex((f) => f.id === item.id))
-                }
+                onOpen={() => openItem(item)}
+                onDownload={() => source.download?.(item)}
+              />
+            ))}
+          </ul>
+        ) : (
+          <ul className='grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-2'>
+            {items.map((item) => (
+              <SharedTile
+                key={item.id}
+                item={item}
+                thumb={thumbs.data?.[item.id]}
+                canDownload={data.allowDownload}
+                onOpen={() => openItem(item)}
                 onDownload={() => source.download?.(item)}
               />
             ))}
@@ -193,13 +270,17 @@ function SharedPage() {
   );
 }
 
+type SharedItem = Omit<Item, 'location' | 'shared' | 'sharedVia'>;
+
 function SharedRow({
   item,
+  thumb,
   canDownload,
   onOpen,
   onDownload
 }: {
-  item: Omit<Item, 'location' | 'shared'>;
+  item: SharedItem;
+  thumb?: string;
   canDownload: boolean;
   onOpen: () => void;
   onDownload: () => void;
@@ -207,7 +288,11 @@ function SharedRow({
   return (
     <li className='flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50 sm:px-4'>
       <button type='button' onClick={onOpen} className='flex min-w-0 flex-1 items-center gap-3 text-left'>
-        <FileIcon item={item} className='size-6' />
+        {thumb ? (
+          <img src={thumb} alt='' loading='lazy' draggable={false} className='size-9 shrink-0 rounded-md border bg-muted object-cover' />
+        ) : (
+          <FileIcon item={item} className='size-9' />
+        )}
         <span className='min-w-0'>
           <span className='block truncate text-sm font-medium hover:underline'>{item.name}</span>
           <span className='block truncate text-xs text-muted-foreground'>
@@ -221,6 +306,59 @@ function SharedRow({
           <span className='max-sm:sr-only'>Download</span>
         </Button>
       )}
+    </li>
+  );
+}
+
+function SharedTile({
+  item,
+  thumb,
+  canDownload,
+  onOpen,
+  onDownload
+}: {
+  item: SharedItem;
+  thumb?: string;
+  canDownload: boolean;
+  onOpen: () => void;
+  onDownload: () => void;
+}) {
+  const kind = item.type === 'file' ? fileKind(item.name, item.mimeType) : null;
+  return (
+    <li className='group relative flex flex-col rounded-lg p-2 hover:bg-muted'>
+      <button type='button' onClick={onOpen} className='flex flex-col text-left' aria-label={`Open ${item.name}`}>
+        <span className='relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-md border bg-muted/70'>
+          {thumb && kind === 'image' ? (
+            <img src={thumb} alt='' loading='lazy' draggable={false} className='size-full object-cover' />
+          ) : thumb && kind === 'video' ? (
+            <>
+              {/* The icon shows until (or if) the first frame loads. */}
+              <FileIcon item={item} className='absolute size-16' />
+              <video src={`${thumb}#t=0.5`} preload='metadata' muted playsInline className='pointer-events-none relative size-full object-cover' />
+              <span className='absolute right-2 bottom-2 flex size-7 items-center justify-center rounded-full bg-black/60 text-white'>
+                <PlayIcon className='size-3.5 fill-current' />
+              </span>
+            </>
+          ) : (
+            <FileIcon item={item} className='size-16' />
+          )}
+        </span>
+      </button>
+      <div className='flex items-start gap-1 pt-2'>
+        <div className='min-w-0 flex-1 px-0.5'>
+          <p className='line-clamp-2 text-sm leading-snug font-medium [overflow-wrap:anywhere]' title={item.name}>
+            {item.name}
+          </p>
+          <p className='truncate text-xs text-muted-foreground'>
+            {item.type === 'folder' ? 'Folder' : formatBytes(item.size)}
+          </p>
+        </div>
+        {item.type === 'file' && canDownload && (
+          <Button variant='ghost' size='icon-sm' onClick={onDownload} aria-label={`Download ${item.name}`} className='text-muted-foreground'>
+            <DownloadIcon />
+          </Button>
+        )}
+      </div>
     </li>
   );
 }

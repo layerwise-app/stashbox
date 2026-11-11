@@ -19,7 +19,7 @@ export const itemColumns = {
   updatedAt: items.updatedAt
 };
 
-export type ItemRow = Omit<Item, 'location' | 'shared'>;
+export type ItemRow = Omit<Item, 'location' | 'shared' | 'sharedVia'>;
 
 export function idList(ids: string[]): SQL {
   return sql.join(

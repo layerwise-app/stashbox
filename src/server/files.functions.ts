@@ -52,30 +52,49 @@ function ids(value: unknown): string[] {
 
 // ---- Listing -------------------------------------------------------------
 
-async function sharedIds(userId: string, itemIds: string[]) {
-  const out = new Set<string>();
-  for (const part of chunk(itemIds, 90)) {
-    const rows = await db
-      .select({ itemId: shares.itemId })
-      .from(shares)
-      .where(and(eq(shares.userId, userId), inArray(shares.itemId, part)));
-    rows.forEach((row) => out.add(row.itemId));
-  }
-  return out;
-}
+type FolderNode = { id: string; name: string; parentId: string | null };
 
-async function withShared(userId: string, rows: Item[]): Promise<Item[]> {
-  const shared = await sharedIds(userId, rows.map((row) => row.id));
-  return rows.map((row) => ({ ...row, shared: shared.has(row.id) }));
-}
-
-/** Adds each item's folder path, for lists that span folders. */
-async function withLocations(userId: string, rows: Item[]): Promise<Item[]> {
+async function liveFolders(userId: string): Promise<Map<string, FolderNode>> {
   const folders = await db
     .select({ id: items.id, name: items.name, parentId: items.parentId })
     .from(items)
     .where(and(eq(items.userId, userId), eq(items.type, 'folder'), isNull(items.trashedAt)));
-  const byId = new Map(folders.map((f) => [f.id, f]));
+  return new Map(folders.map((f) => [f.id, f]));
+}
+
+/**
+ * Marks items that have a link of their own, and items reachable through the
+ * link of a folder above them (`sharedVia`, the nearest such folder).
+ */
+async function withShared(
+  userId: string,
+  rows: Item[],
+  folders?: Map<string, FolderNode>
+): Promise<Item[]> {
+  if (!rows.length) return rows;
+  const links = await db
+    .select({ itemId: shares.itemId })
+    .from(shares)
+    .where(eq(shares.userId, userId));
+  const shared = new Set(links.map((link) => link.itemId));
+  if (!shared.size) return rows.map((row) => ({ ...row, shared: false }));
+  const byId = folders ?? (await liveFolders(userId));
+  return rows.map((row) => {
+    if (shared.has(row.id)) return { ...row, shared: true };
+    for (let cur = row.parentId, guard = 0; cur && guard < 1000; guard++) {
+      const folder = byId.get(cur);
+      if (!folder) break;
+      if (shared.has(folder.id))
+        return { ...row, shared: false, sharedVia: { id: folder.id, name: folder.name } };
+      cur = folder.parentId;
+    }
+    return { ...row, shared: false };
+  });
+}
+
+/** Adds each item's folder path, for lists that span folders. */
+async function withLocations(userId: string, rows: Item[]): Promise<Item[]> {
+  const byId = await liveFolders(userId);
   const pathOf = (id: string | null): string => {
     const names: string[] = [];
     for (let cur = id, guard = 0; cur && guard < 1000; guard++) {
@@ -88,7 +107,8 @@ async function withLocations(userId: string, rows: Item[]): Promise<Item[]> {
   };
   return withShared(
     userId,
-    rows.map((row) => ({ ...row, location: { id: row.parentId, path: pathOf(row.parentId) } }))
+    rows.map((row) => ({ ...row, location: { id: row.parentId, path: pathOf(row.parentId) } })),
+    byId
   );
 }
 

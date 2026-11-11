@@ -202,7 +202,7 @@ function PreviewBody({ file, source }: { file: PreviewFile; source: PreviewSourc
             )}
             {text.data!.truncated && (
               <p className='mt-3 text-center text-xs text-muted-foreground'>
-                Showing the first 1 MB. Download the file to see all of it.
+                Showing the first 1 MB.{source.download && ' Download the file to see all of it.'}
               </p>
             )}
           </div>
